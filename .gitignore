@@ -1,0 +1,10 @@
+/*
+!/package.json
+!/babel.config.json
+!/.gitignore
+!/gulpfile.js
+!/webpack
+!/src/
+!/src/*
+!/LICENSE
+!/README.md
