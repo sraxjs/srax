@@ -1,5 +1,6 @@
 import RenderUtils from './utils';
 import Utils from '../../utils/main';
+import { VDOM_LIST_KEY } from '../../options';
 
 const NO_VALUE_ATTR = ['disabled', 'checked', 'selected', 'readonly', 'controls'];
 
@@ -20,6 +21,11 @@ const IsEvent = (eventName) => {
 export default (node, attributes) => {
 
     Utils.each(attributes, (v, e) => {
+
+        // key 不渲染
+        if (e === VDOM_LIST_KEY) {
+            return;
+        }
 
         if (IsEvent(e)) {
             // 事件处理

@@ -1,24 +1,95 @@
-import VUtils from './utils';
+import VUtils from '../../jsx/vdom/utils';
+import PUtils from './utils';
+import Utils from '../../utils/main';
+import { CreateElement } from '../render/mian';
+import { VDOM_LIST_KEY } from '../../options';
 
-let REPLACE = 'replace';
-let REORDER = 'reorder';
-let PROPS = 'props';
-let TEXT = 'text';
-let REMOVE = 'remove';
-let INSERT = 'insert';
+// 对象替换
+const ObjectReplace = (oldObject, newObject) => {
+    for (let e in oldObject) {
+        delete oldObject[e];
+    }
+    return Object.assign(oldObject, newObject);
+}
+
+// 遍历所有变量
+const EachAllVariable = (jsx) => {
+
+    let list = [];
+    let attributes = jsx.attributes;
+    let children = jsx.children;
+
+    for (let i = 0, len = attributes?.length; i < len; i++) {
+        if (attributes[i]?.type === 'variable') {
+            list.push(attributes[i]);
+        }
+    }
+
+    for (let i = 0, len = children?.length; i < len; i++) {
+        if (children[i]?.type === 'tag') {
+            list = list.concat(EachAllVariable(children[i]));
+        } else if (children[i]?.type === 'variable') {
+            list.push(children[i]);
+        }
+    }
+
+    if (jsx.context) {
+        list.push(Object.assign({}, jsx));
+    }
+
+    return list;
+
+}
+
+// 把变量记录起来
+const RecordVariableStatus = (create, remove, walker) => {
+
+    if (create) {
+        walker.create = walker.create.concat(EachAllVariable(create));
+    }
+
+    if (remove) {
+        walker.remove = walker.remove.concat(EachAllVariable(remove));
+    }
+
+};
 
 // 对子元素的排序
-let ReorderChildren = function (node, moves) {
+const ReorderChildren = function (jsxs, moves, walker) {
 
-    let staticNodeList = VUtils.getChildren(node);
+    var staticNodeList = Object.assign([], jsxs);
+    let node = walker.node;
     let maps = {};
+    let mapsItem;
+    let mapsIndex;
 
-    for (let i = 0, len = staticNodeList.length; i < len; i++) {
+    let move;
+    let index;
+    let childIndex;
 
-        let nodeItem = staticNodeList[i];
+    let nodeItem;
+    let key;
+    let newChild;
+    let initIndex;
+    let isInsert;
 
-        if (nodeItem.nodeType === 1) {
-            let key = VUtils.getItemSign(nodeItem);
+    let childNodes = PUtils.getChildren(node);
+
+    if (!jsxs.length) {
+        initIndex = childNodes.length;
+    }
+
+    for (let i = 0, len = childNodes.length; i < len; i++) {
+
+        isInsert = false;
+
+        if (initIndex === undefined && jsxs[0]?.element === childNodes[i]) {
+            initIndex = i;
+        }
+
+        if (initIndex !== undefined) {
+            nodeItem = jsxs[i - initIndex];
+            key = VUtils.getItemSign(nodeItem);
             if (key) {
                 maps[key] = nodeItem;
             }
@@ -28,32 +99,69 @@ let ReorderChildren = function (node, moves) {
 
     for (let i = 0, len = moves.length; i < len; i++) {
 
-        let move = moves[i];
+        move = moves[i];
 
-        let index = move.index;
-        let childNodes = VUtils.getChildren(node);
-        let insertNode;
+        index = move.index;
+        childIndex = index + initIndex;
+        childNodes = PUtils.getChildren(node);
 
-        if (move.type === REMOVE) {
+        if (move.type === VUtils.REMOVE) {
 
-            if (staticNodeList[index] === childNodes[index]) {
-                node.removeChild(childNodes[index]);
+            if (staticNodeList[index].element === childNodes[childIndex]) {
+                // 记录变量状态
+                RecordVariableStatus(null, staticNodeList[index], walker);
+                node.removeChild(childNodes[childIndex]);
+                jsxs.splice(index, 1);
+                childNodes.splice(childNodes, 1);
             }
 
             staticNodeList.splice(index, 1);
 
-        } else if (move.type === INSERT) {
+        } else if (move.type === VUtils.INSERT) {
 
-            let key = VUtils.getItemSign(move.item);
+            // 这里获取的是 JSX 的 key
+            key = VUtils.getItemSign(move.item);
+            mapsItem = maps[key];
 
-            if (maps[key]) {
-                insertNode = maps[key];
+            if (mapsItem) {
+
+                newChild = mapsItem.element;
+                mapsIndex = jsxs.indexOf(mapsItem);
+
+                staticNodeList.splice(index, 0, mapsItem);
+
+                // 做位移
+                if (mapsIndex > -1) {
+                    if (mapsIndex > index) {
+                        jsxs.splice(index, 0, mapsItem);
+                        jsxs.splice(mapsIndex + 1, 1);
+                        childNodes.splice(childIndex, 0, newChild);
+                        childNodes.splice(mapsIndex + initIndex + 1, 1);
+                    } else {
+                        jsxs.splice(index + 1, 0, mapsItem);
+                        jsxs.splice(mapsIndex, 1);
+                        childNodes.splice(childIndex + 1, 0, newChild);
+                        childNodes.splice(mapsIndex + initIndex, 1);
+                    }
+                } else {
+                    jsxs.splice(index, 0, mapsItem);
+                    childNodes.splice(childIndex, 0, newChild);
+                }
+
             } else {
-                insertNode = move.item;
+
+                // 记录变量状态
+                RecordVariableStatus(move.item, null, walker);
+                newChild = CreateElement(move.item);
+
+                staticNodeList.splice(index, 0, move.item);
+                jsxs.splice(index, 0, move.item);
+                childNodes.splice(childIndex, 0, newChild);
+                isInsert = true;
+
             }
 
-            staticNodeList.splice(index, 0, insertNode);
-            node.insertBefore(insertNode, childNodes[index] || null);
+            node.insertBefore(newChild, isInsert ? null : (childNodes[childIndex] || null));
 
         }
 
@@ -62,104 +170,103 @@ let ReorderChildren = function (node, moves) {
 };
 
 // 设置属性, 如果为 undefined 则移除属性
-let SetProps = function (node, props) {
+const SetProps = function (jsx, props) {
+
+    let node = jsx.element;
+
     for (let key in props) {
-        if (props[key] === undefined) {
-            node.removeAttribute(key);
-        } else {
-            VUtils.setAttr(node, key, props[key]);
+
+        if (key === VDOM_LIST_KEY) {
+            continue;
         }
+
+        if (props[key] === undefined || props[key] === null) {
+            node.removeAttribute(key);
+            delete jsx.attributes[key];
+        } else {
+            PUtils.setAttr(node, key, props[key]);
+            jsx.attributes[key] = props[key];
+        }
+
     }
+
 };
 
-// 针对DOM做对应的修改
-let ApplyPatches = function (node, currentPatches, walker) {
+const ApplyPatches = (jsx, currentPatches, walker) => {
+
+    // DOM
+    let node = jsx.element;
+    let currentPatch;
+    let replaceNode;
 
     for (let i = 0, len = currentPatches.length; i < len; i++) {
 
-        let currentPatch = currentPatches[i];
+        currentPatch = currentPatches[i];
 
         switch (currentPatch.type) {
 
-            case REPLACE:
-
-                let newNode = currentPatch.node;
-                let replaceChild = newNode;
-
-                node.parentNode.replaceChild(replaceChild, node);
-
-                if (walker.oldNode === node) {
-                    walker.newNode = replaceChild;
-                }
-
-                replaceChild = null;
-
+            case VUtils.REPLACE:
+                // 记录变量状态
+                RecordVariableStatus(currentPatch.node, jsx, walker);
+                replaceNode = CreateElement(currentPatch.node);
+                ObjectReplace(jsx, currentPatch.node);
+                jsx.element = replaceNode;
+                node.parentNode.replaceChild(replaceNode, node);
                 break;
 
-            case REORDER:
-                ReorderChildren(node, currentPatch.moves);
+            case VUtils.REORDER:
+                ReorderChildren(jsx, currentPatch.moves, walker);
                 break;
 
-            case PROPS:
-                SetProps(node, currentPatch.props);
+            case VUtils.PROPS:
+                SetProps(jsx, currentPatch.props);
                 break;
 
-            case TEXT:
-                if (node.nodeValue) {
-                    node.nodeValue = currentPatch.content;
-                } else {
-                    node.textContent = currentPatch.content;
-                }
+            case VUtils.TEXT:
+                jsx.value = node.nodeValue = currentPatch.content;
                 break;
 
             default:
-                throw new Error('Unknown patch type ' + currentPatch.type);
+                Utils.error('### Unknown patch type ' + currentPatch.type);
 
         }
 
     }
 
-};
+}
 
-// 找到需要修改的DOM元素和修改内容
-let Walk = function (node, walker, patches) {
+const Walk = (jsxs, patches, walker) => {
 
-    let child;
+    let children;
     let currentPatches = patches[walker.index];
 
-    let childNodes = VUtils.getChildren(node);
-    let len = childNodes ? childNodes.length : 0;
+    if (jsxs instanceof Array) {
+        children = jsxs;
+    } else if (jsxs?.children) {
+        children = jsxs.children;
+    }
 
-    for (let i = 0; i < len; i++) {
-        child = childNodes[i];
-        walker.index++;
-        if (child) {
-            switch (child.nodeType) {
-                case 8:
-                    break;
-                default:
-                    Walk(child, walker, patches);
-            }
+    if (children) {
+        for (let i = 0, len = children.length; i < len; i++) {
+            walker.index++;
+            Walk(children[i], patches, walker);
         }
     }
 
     if (currentPatches) {
-        ApplyPatches(node, currentPatches, walker);
+        ApplyPatches(jsxs, currentPatches, walker);
     }
+
 
     return walker;
 
+}
+
+export default function (node, jsxs, patches) {
+    return Walk(jsxs, patches, {
+        index: 0,
+        node: node,
+        remove: [],
+        create: []
+    });
 };
-
-let Patch = function (node, patches) {
-    return Walk(node, { index: 0, newNode: null, oldNode: node, remove: [], create: [] }, patches);
-};
-
-Patch.REPLACE = REPLACE;
-Patch.REORDER = REORDER;
-Patch.PROPS = PROPS;
-Patch.TEXT = TEXT;
-Patch.REMOVE = REMOVE;
-Patch.INSERT = INSERT;
-
-export default Patch;

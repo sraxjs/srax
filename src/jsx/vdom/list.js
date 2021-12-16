@@ -1,14 +1,16 @@
-import Patch from './patch';
 import VUtils from './utils';
 
-let MakeKeyIndexAndFree = (list) => {
+const MakeKeyIndexAndFree = (list) => {
 
     let keyIndex = {};
     let free = [];
 
+    let item;
+    let itemKey;
+
     for (let i = 0, len = list.length; i < len; i++) {
-        let item = list[i];
-        let itemKey = VUtils.getItemSign(item);
+        item = list[i];
+        itemKey = VUtils.getItemSign(item);
         if (itemKey) {
             keyIndex[itemKey] = i;
         } else {
@@ -23,7 +25,7 @@ let MakeKeyIndexAndFree = (list) => {
 
 };
 
-let DiffList = (newList, oldList) => {
+export const DiffList = (newList, oldList) => {
 
     let newMap = MakeKeyIndexAndFree(newList);
     let oldMap = MakeKeyIndexAndFree(oldList);
@@ -36,7 +38,6 @@ let DiffList = (newList, oldList) => {
     let moves = [];
 
     let children = [];
-    let i = 0;
 
     let item;
     let itemKey;
@@ -45,26 +46,26 @@ let DiffList = (newList, oldList) => {
     let newItemIndex;
     let freeItem;
 
-    let simulateList;
-    let j;
+    let simulateList = [];
+    let j = 0;
     let nextItemKey;
 
     let simulateItem;
     let simulateItemKey;
 
     let remove = function (index, item) {
-        moves.push({ index: index, item: item, type: Patch.REMOVE });
+        moves.push({ index: index, item: item, type: VUtils.REMOVE });
     };
 
     let insert = function (index, item) {
-        moves.push({ index: index, item: item, type: Patch.INSERT });
+        moves.push({ index: index, item: item, type: VUtils.INSERT });
     };
 
     let removeSimulate = function (index) {
         simulateList.splice(index, 1);
     };
 
-    while (i < oldList.length) {
+    for (let i = 0, len = oldList.length; i < len; i++) {
 
         item = oldList[i];
         itemKey = VUtils.getItemSign(item);
@@ -72,36 +73,31 @@ let DiffList = (newList, oldList) => {
         if (itemKey) {
             if (!newKeyIndex.hasOwnProperty(itemKey)) {
                 children.push(null);
+                simulateList.push(null);
             } else {
                 newItemIndex = newKeyIndex[itemKey];
                 children.push(newList[newItemIndex]);
+                simulateList.push(newList[newItemIndex]);
             }
         } else {
             freeItem = newFree[freeIndex++];
             children.push(freeItem || null);
+            simulateList.push(freeItem || null);
         }
-
-        i++;
 
     }
 
-    simulateList = children.slice(0);
-
-    i = 0;
-
-    while (i < simulateList.length) {
+    for (let i = 0, len = simulateList.length; i < len; i++) {
         simulateListItem = simulateList[i];
-        if (simulateListItem === null) {
+        if (simulateListItem === null || simulateListItem === undefined) {
             remove(i);
             removeSimulate(i);
-        } else {
-            i++;
+            i--;
+            len = simulateList.length;
         }
     }
 
-    j = i = 0;
-
-    while (i < newList.length) {
+    for (let i = 0, len = newList.length; i < len; i++) {
 
         item = newList[i];
         itemKey = VUtils.getItemSign(item);
@@ -128,8 +124,6 @@ let DiffList = (newList, oldList) => {
             insert(i, item);
         }
 
-        i++;
-
     }
 
     return {
@@ -138,7 +132,3 @@ let DiffList = (newList, oldList) => {
     };
 
 };
-
-export {
-    DiffList
-}

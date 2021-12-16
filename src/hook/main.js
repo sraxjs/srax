@@ -1,11 +1,11 @@
-import state from './state/main';
+import context, { CreateFunctionContext } from './context/main';
 import effect from './effect/main';
-import { CreateFunctionParamInterceptor, CreateFunctionContext, CreateJSXExpression } from './render/main';
+import { CreateVariableContext, CreateReturnContext } from './render/main';
 
 export default {
-    state,
+    context,
     effect,
-    createFunctionParamInterceptor: CreateFunctionParamInterceptor,
-    createFunctionContext: CreateFunctionContext,
-    createJSXExpression: CreateJSXExpression
+    CreateVariableContext,
+    CreateReturnContext,
+    CreateFunctionContext
 }

@@ -1,6 +1,9 @@
-import { VDOM_LIST_KEY, VDOM_SKIP_KEY } from '../../options';
-
 export default {
+
+    // 获取DOM下的所有元素, 移除所有空格
+    getChildren: (element) => {
+        return Array.from(element.children);
+    },
 
     // 表单元素
     isFormElements: (v) => {
@@ -12,48 +15,6 @@ export default {
                 return true;
         };
         return false;
-    },
-
-    // 获取DOM下的所有元素, 移除所有空格
-    getChildren: (element) => {
-
-        let child = [];
-        let childNodes = element.childNodes;
-
-        for (let i = 0, len = childNodes.length; i < len; i++) {
-            switch (childNodes[i].nodeType) {
-                case 3:
-                    if (childNodes[i].nodeValue || childNodes[i].textContent) {
-                        child.push(childNodes[i]);
-                    }
-                    break;
-                case 1:
-                    child.push(childNodes[i]);
-                    break;
-                default:
-            }
-        }
-
-        return child;
-
-    },
-
-    // 获取元素的唯一标识
-    getItemSign: (item) => {
-        if (item && item.nodeType === 1) {
-            return item.getAttribute(VDOM_LIST_KEY);
-        }
-        return undefined;
-    },
-
-    // 是否跳过diff
-    getSkip: (item) => {
-        let skip;
-        if (item && item.nodeType === 1) {
-            skip = item.getAttribute(VDOM_SKIP_KEY);
-            return skip !== null && skip === 'true';
-        }
-        return undefined;
     },
 
     // 设置元素的属性

@@ -1,114 +1,72 @@
-import Utils from '../../utils/main';
+let VariableContext = 0;
 
-// 全局上下文
-const FunctionContext = {};
+// 获取最终 value 值
+const GetValue = (v) => {
+    if (typeof v === 'function') {
+        return GetValue(v());
+    }
+    return v;
+}
 
-// 链表形式的上下文
-export const RenderContext = {
-    list: [],
-    currentIndex: 0,
-    initial(value) {
-        this.list[this.currentIndex] = value;
-        return this;
-    },
-    get() {
-        return FunctionContext[this.list[this.currentIndex]];
-    },
-    next() {
-        this.currentIndex++;
-        return this;
-    },
-    prev() {
-        this.currentIndex--;
-        return this;
+// return 上下文
+export const CreateReturnContext = (ret, context) => {
+    // jsx
+    if (typeof ret === 'function') {
+        let value = ret();
+        if (['tag', 'text'].indexOf(value?.type) > -1) {
+            value.context = context;
+            context.jsx = value;
+        }
+        return value;
+    } else {
+        context.ready.trigger();
+        return ret;
     }
 }
 
-export const CreateFunctionParamInterceptor = (value, fn) => {
+// 变量上下文
+export const CreateVariableContext = (nestContext, context, fn) => {
 
-    Utils.each(value, (v, i) => {
-        if (v.context && v.onChange) {
-            value[i] = v.value;
-            v.onChange((newValue) => {
-                fn(value);
-                value[i] = newValue;
-            });
-        }
-    });
+    fn = fn.bind({ type: 'CreateVariableContext' });
 
-    return value;
-
-}
-
-// srax 函数上下文
-export const CreateFunctionContext = () => {
-
-    let key = Symbol();
-
-    // 防止出现第一位是空值
-    if (RenderContext.list.length) {
-        RenderContext.next();
-    }
-
-    // 初始化
-    RenderContext.initial(key);
-
-    return FunctionContext[key] = {
-        key: key,
-        type: 'SraxFunctionContext',
-        state: [],
-        variable: [],
-        JSX: function (jsx) {
-            // 执行完则返回上一层
-            RenderContext.prev();
-            // 保存上下文
-            jsx.context = this;
-            return jsx;
-        },
-        change: function () {
-            this.variable.forEach((fn) => {
-                fn();
-            });
-        },
-        onChange: function (fn) {
-            this.variable.push(fn);
-        }
-    };
-
-}
-
-// JSX 标签内的 {} 表达式
-export const CreateJSXExpression = (fn) => {
-
-    let value = fn();
-    let context = RenderContext.get();
+    let value = GetValue(fn);
+    let key = context.key + '.' + VariableContext++;
 
     // 如果没有上下文
-    if (!context) {
+    // 防止嵌套使用
+    if (nestContext?.type === 'CreateVariableContext') {
         return value;
     }
 
-    // 兼容以下写法
-    // <div>{() => {return value;}}</div>
+    // 是JSX
+    if (value?.type === 'tag' || value?.type === 'text') {
+        return value;
+    }
+
+    // 如果是 function
     if (typeof value === 'function') {
-        return CreateJSXExpression(value);
+        value = value();
     }
 
     // 防止嵌套
-    if (value?.type === 'variable') {
-        return value;
-    }
-
-    if (value?.context) {
-        Utils.error('### 这是一个有状态的函数，请用标签形式调用 <FunctationName attr="" {...attrs} />');
+    if (value) {
+        if (value.type === 'variable' && value.context) {
+            return value;
+        } else if (value instanceof Array && value.type === 'children') {
+            return value;
+        }
     }
 
     return {
         type: 'variable',
-        onChange: function (callback) {
-            context.onChange(() => {
-                return callback(this.value = fn());
+        key: key,
+        on: function (callback) {
+            context.variable.on(key, () => {
+                callback(this.value = GetValue(fn));
             });
+        },
+        off: () => {
+            context.variable.off(key);
         },
         context: context,
         value: value

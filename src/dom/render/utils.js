@@ -1,11 +1,11 @@
 const listenChange = (value, fn) => {
-    if (value.onChange) {
-        value.onChange((newValue) => {
+    if (value?.on) {
+        value.on((newValue) => {
             fn(newValue);
         });
         return renderNode(value.value);
     }
-    return value;
+    return renderNode(value);
 }
 
 const renderNode = (v) => {
